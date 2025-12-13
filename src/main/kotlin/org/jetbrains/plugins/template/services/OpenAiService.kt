@@ -51,8 +51,8 @@ class OpenAiService {
         selected code - main part of the code for which the question is asked (it has more priority then context and is imbedded in the context)
         question - the user question about the selected code provided
         file name - the file name of the selected code (for some additional context)
-        
-        Return HTML
+        Be concise.
+        Response in MD format.
         """.trimIndent()
 
     private fun buildInput(req: AiRequest): String {

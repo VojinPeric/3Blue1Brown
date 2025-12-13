@@ -12,6 +12,11 @@ import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
 import org.jetbrains.plugins.template.services.AiRequest
 import org.jetbrains.plugins.template.services.OpenAiService
+import com.intellij.openapi.wm.ToolWindowManager
+import com.intellij.openapi.application.ApplicationManager
+import org.jetbrains.plugins.template.services.AiUiStateService
+
+
 
 class AskOpenAiFromEditorAction : AnAction("Ask OpenAI (from selection)") {
 
@@ -64,7 +69,14 @@ class AskOpenAiFromEditorAction : AnAction("Ask OpenAI (from selection)") {
                     "Error: ${t.message ?: t.javaClass.simpleName}"
                 }
 
-                notify(project, answer.take(1500), NotificationType.INFORMATION)
+                val ui = project.service<AiUiStateService>()
+                ui.setAnswer(answer)
+
+                ApplicationManager.getApplication().invokeLater {
+                    ToolWindowManager.getInstance(project)
+                        .getToolWindow("MyToolWindow")
+                        ?.show()
+                }
             }
         }.queue()
     }
