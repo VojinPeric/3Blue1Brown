@@ -5,7 +5,7 @@
     <vendor>JetBrains</vendor>
 
     <depends>com.intellij.modules.platform</depends>
-
+    <depends>Git4Idea</depends>
     <depends>org.intellij.plugins.markdown</depends>
 
     <resource-bundle>messages.MyBundle</resource-bundle>
