@@ -22,7 +22,7 @@ class OpenAiService {
             ?: error("OPENAI_API_KEY is not set in the runIde process")
 
         val payload = mapper.createObjectNode().apply {
-            put("model", "gpt-5-mini")
+            put("model", "gpt-4.1")
             put("instructions", buildInstructions())
             put("input", buildInput(req))
         }.toString()
