@@ -52,7 +52,6 @@ class OpenAiService {
         question - the user question about the selected code provided
         file name - the file name of the selected code (for some additional context)
         
-        Answer the question given, and format it so it is medium length (not more then 250 characters).
         Return HTML
         """.trimIndent()
 
