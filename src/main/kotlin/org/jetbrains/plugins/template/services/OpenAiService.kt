@@ -52,7 +52,7 @@ class OpenAiService {
         question - the user question about the selected code provided
         file name - the file name of the selected code (for some additional context)
         Be concise.
-        Response in MD format.
+        Response in MD format. Do not start with ```
         """.trimIndent()
 
     private fun buildInput(req: AiRequest): String {

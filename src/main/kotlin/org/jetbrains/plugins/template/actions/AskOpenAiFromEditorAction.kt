@@ -16,6 +16,9 @@ import org.jetbrains.plugins.template.services.OpenAiService
 import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.openapi.application.ApplicationManager
 import org.jetbrains.plugins.template.services.AiUiStateService
+import org.jetbrains.plugins.template.services.EmailPayload
+import com.intellij.openapi.vfs.LocalFileSystem
+import com.intellij.openapi.vfs.VfsUtilCore
 import git4idea.GitUtil
 import git4idea.repo.GitRepositoryManager
 import git4idea.repo.GitRepository
@@ -54,34 +57,27 @@ class AskOpenAiFromEditorAction : AnAction("Ask OpenAI (from selection)") {
         }
 
         // --- New: Git owner lookup ---
-        if (!selectedSnippet.isNullOrBlank()) {
-            val virtualFile = psiFile.virtualFile
-            val document = editor.document
-            val selModel = editor.selectionModel
-            val startOffset = selModel.selectionStart
-            val endOffset = selModel.selectionEnd
+        if (selectedSnippet.isNullOrBlank()) return
 
-            val startLine = (document.getLineNumber(startOffset) + 1)
-            val endLine = (document.getLineNumber(endOffset - 1) + 1)
-            println ("line interval: $startLine $endLine" )
+        val virtualFile = psiFile.virtualFile
+        val document = editor.document
+        val selModel = editor.selectionModel
+        val startOffset = selModel.selectionStart
+        val endOffset = selModel.selectionEnd
 
-            object : com.intellij.openapi.progress.Task.Backgroundable(project, "Getting Git author...", true) {
-                override fun run(indicator: com.intellij.openapi.progress.ProgressIndicator) {
-                    try {
-                        val repository = GitRepositoryManager.getInstance(project).getRepositoryForFileQuick(virtualFile)
-                        if (repository != null) {
-                            val authorInfo = getGitAuthorForLines(project, repository, virtualFile, startLine, endLine)
-                            println("Git author of selected snippet: $authorInfo")
-                        }
-                    } catch (ex: Exception) {
-                        println("Error getting Git author: ${ex.message}")
-                    }
-                }
-            }.queue()
-        }
+        val startLine = (document.getLineNumber(startOffset) + 1)
+        val endLine = (document.getLineNumber(endOffset - 1) + 1)
+        var authorInfo: Sequence<String>  = sequenceOf()
+
 
         val fileText = runReadAction { psiFile.text }
-        val filePath = runReadAction { psiFile.virtualFile?.path }
+        val filePath = runReadAction {
+            val vf = psiFile.virtualFile ?: return@runReadAction null
+            val basePath = project.basePath ?: return@runReadAction null
+            val baseVf = LocalFileSystem.getInstance().findFileByPath(basePath) ?: return@runReadAction null
+            val rel = VfsUtilCore.getRelativePath(vf, baseVf, '/') ?: return@runReadAction null
+            "${project.name}/$rel"
+        }
         val languageHint = runReadAction { psiFile.language.id }
 
         val req = AiRequest(
@@ -103,8 +99,27 @@ class AskOpenAiFromEditorAction : AnAction("Ask OpenAI (from selection)") {
                     "Error: ${t.message ?: t.javaClass.simpleName}"
                 }
 
+                try {
+                    val repository = GitRepositoryManager.getInstance(project).getRepositoryForFileQuick(virtualFile)
+                    if (repository != null) {
+                        authorInfo = getGitAuthorForLines(project, repository, virtualFile, startLine, endLine)
+                        println("Git author of selected snippet: $authorInfo")
+                    }
+                } catch (ex: Exception) {
+                    println("Error getting Git author: ${ex.message}")
+                }
+
                 val ui = project.service<AiUiStateService>()
-                ui.setAnswer(answer)
+                ui.setResult(
+                    answer = answer,
+                    payload = EmailPayload(
+                        question = question,
+                        filePath = filePath,
+                        selectedSnippet = selectedSnippet,
+                        name = authorInfo.elementAtOrNull(0),
+                        email = authorInfo.elementAtOrNull(1)
+                    )
+                )
 
                 ApplicationManager.getApplication().invokeLater {
                     ToolWindowManager.getInstance(project)
@@ -129,7 +144,7 @@ class AskOpenAiFromEditorAction : AnAction("Ask OpenAI (from selection)") {
         file: VirtualFile,
         startLine: Int,
         endLine: Int
-    ): String {
+    ): Sequence<String> {
 
         val handler = GitLineHandler(project, repository.root, GitCommand.BLAME)
         handler.setSilent(true)
@@ -159,9 +174,9 @@ class AskOpenAiFromEditorAction : AnAction("Ask OpenAI (from selection)") {
             if (matchEmail != null) {
                 val email = matchEmail!!.groupValues[1].trim()
                 val name = matchName!!.groupValues[1].trim()
-                return "$name $email"
+                return sequenceOf(name, email)
             }
         }
-        return "Unknown author"
+        throw IllegalArgumentException("Unkown author")
     }
 }
