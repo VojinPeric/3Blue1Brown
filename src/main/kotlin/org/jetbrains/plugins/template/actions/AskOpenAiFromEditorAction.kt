@@ -28,7 +28,7 @@ import git4idea.commands.GitLineHandler
 
 
 
-class AskOpenAiFromEditorAction : AnAction("Ask OpenAI (from selection)") {
+class AskOpenAiFromEditorAction : AnAction("Athena Deescalate") {
 
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
@@ -44,7 +44,7 @@ class AskOpenAiFromEditorAction : AnAction("Ask OpenAI (from selection)") {
         val question = Messages.showInputDialog(
             project,
             "Ask a question about the selected code / file:",
-            "Ask OpenAI",
+            "Athena Proxy",
             Messages.getQuestionIcon()
         )?.trim()
 
@@ -123,7 +123,7 @@ class AskOpenAiFromEditorAction : AnAction("Ask OpenAI (from selection)") {
 
                 ApplicationManager.getApplication().invokeLater {
                     ToolWindowManager.getInstance(project)
-                        .getToolWindow("MyToolWindow")
+                        .getToolWindow("Athena")
                         ?.show()
                 }
             }
@@ -132,8 +132,8 @@ class AskOpenAiFromEditorAction : AnAction("Ask OpenAI (from selection)") {
 
     private fun notify(project: com.intellij.openapi.project.Project, text: String, type: NotificationType) {
         NotificationGroupManager.getInstance()
-            .getNotificationGroup("OpenAI")
-            .createNotification("OpenAI", text, type)
+            .getNotificationGroup("Athena")
+            .createNotification("Athena", text, type)
             .notify(project)
     }
 

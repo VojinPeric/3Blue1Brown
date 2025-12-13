@@ -19,6 +19,8 @@ import javax.swing.JButton
 import javax.swing.JPanel
 import java.awt.FlowLayout
 import com.intellij.util.ui.JBUI
+import com.intellij.util.ui.UIUtil
+import javax.swing.JLabel
 
 
 class MyToolWindowFactory : ToolWindowFactory {
@@ -29,11 +31,18 @@ class MyToolWindowFactory : ToolWindowFactory {
 
         val ui = project.service<AiUiStateService>()
 
-        val sendEmailBtn = JButton("Send email")
+        val explanationLabel = JLabel("Not satisfied with Athena's answer?").apply {
+            foreground = UIUtil.getContextHelpForeground()
+            border = JBUI.Borders.emptyLeft(8)
+            font = JBUI.Fonts.label(11F)  // Slightly smaller
+        }
+
+        val sendEmailBtn = JButton("Escalate")
 
         val buttonBar = JPanel(FlowLayout(FlowLayout.RIGHT)).apply {
             border = JBUI.Borders.empty(8)   // padding, optional
             isOpaque = false                 // optional
+            add(explanationLabel)
             add(sendEmailBtn)                // button keeps preferred size (small)
         }
 

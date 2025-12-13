@@ -11,7 +11,7 @@
     <resource-bundle>messages.MyBundle</resource-bundle>
 
     <extensions defaultExtensionNs="com.intellij">
-        <toolWindow factoryClass="org.jetbrains.plugins.template.toolWindow.MyToolWindowFactory" id="MyToolWindow"/>
+        <toolWindow factoryClass="org.jetbrains.plugins.template.toolWindow.MyToolWindowFactory" id="Athena" showStripeButton="false"/>
         <postStartupActivity implementation="org.jetbrains.plugins.template.startup.MyProjectActivity" />
         <notificationGroup id="OpenAI Test"
                            displayType="BALLOON"
@@ -21,12 +21,6 @@
                            isLogByDefault="true"/>
     </extensions>
     <actions>
-        <action id="org.jetbrains.plugins.template.TestOpenAiAction"
-                class="org.jetbrains.plugins.template.actions.TestOpenAiAction"
-                text="Test OpenAI (Temp)"
-                description="Temporary action to test OpenAiService">
-            <add-to-group group-id="ToolsMenu" anchor="last"/>
-        </action>
         <action id="org.jetbrains.plugins.template.AskOpenAiFromEditorAction"
                 class="org.jetbrains.plugins.template.actions.AskOpenAiFromEditorAction"
                 text="Ask OpenAI (Selection/File)"
