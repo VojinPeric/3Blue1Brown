@@ -46,9 +46,14 @@ class OpenAiService {
 
     private fun buildInstructions(): String =
         """
-        You are a senior software engineer helping inside IntelliJ.
-        Be precise, reference the provided code, and if something is missing say what you need.
-        Return Markdown.
+        You are a PHD specialist computer scientist and you specialize in analyzing code and answering questions about such snippets to clients. We will lend you these 4 information parts which will help you answer a client question:
+        context - the general broader code context which can additionally help you with understanding the problem
+        selected code - main part of the code for which the question is asked (it has more priority then context and is imbedded in the context)
+        question - the user question about the selected code provided
+        file name - the file name of the selected code (for some additional context)
+        
+        Answer the question given, and format it so it is medium length (not more then 250 characters).
+        Return HTML
         """.trimIndent()
 
     private fun buildInput(req: AiRequest): String {
@@ -94,6 +99,7 @@ class OpenAiService {
         }
 
         val text = sb.toString().trim()
+        println(text)
         return if (text.isNotEmpty()) text else "No text returned from model."
     }
 }
