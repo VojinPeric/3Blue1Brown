@@ -11,6 +11,13 @@ data class EmailPayload(
     val email: String?
 )
 
+data class EmailDraft(
+    val to: String,
+    val subject: String,
+    val bodyMarkdown: String
+)
+
+
 @Service(Service.Level.PROJECT)
 class AiUiStateService {
     private val listeners = CopyOnWriteArrayList<(String) -> Unit>()
@@ -18,6 +25,9 @@ class AiUiStateService {
     @Volatile private var lastAnswer: String = ""
     @Volatile private var lastEmailPayload: EmailPayload? = null
 
+    @Volatile private var lastDraft: EmailDraft? = null
+    fun setDraft(d: EmailDraft) { lastDraft = d }
+    fun getDraft(): EmailDraft? = lastDraft
 
     fun setResult(answer: String, payload: EmailPayload) {
         lastAnswer = answer

@@ -1,6 +1,5 @@
 package org.jetbrains.plugins.template.toolWindow
 
-import com.intellij.ide.BrowserUtil
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
 import com.intellij.openapi.ui.Messages
@@ -8,112 +7,312 @@ import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.testFramework.LightVirtualFile
+import com.intellij.ui.components.JBScrollPane
+import com.intellij.ui.components.JBTextArea
+import com.intellij.ui.components.JBTextField
 import com.intellij.ui.content.ContentFactory
+import com.intellij.util.ui.JBUI
+import com.intellij.util.ui.UIUtil
 import org.intellij.plugins.markdown.ui.preview.jcef.MarkdownJCEFHtmlPanel
 import org.intellij.plugins.markdown.ui.preview.html.MarkdownUtil
 import org.jetbrains.plugins.template.services.AiUiStateService
+import org.jetbrains.plugins.template.services.EmailPayload
+import org.jetbrains.plugins.template.services.SmtpEmailService
+import org.jetbrains.plugins.template.services.smtpConfigFromEnv
 import java.awt.BorderLayout
-import java.net.URLEncoder
-import java.nio.charset.StandardCharsets
-import javax.swing.JButton
-import javax.swing.JPanel
+import java.awt.CardLayout
 import java.awt.FlowLayout
-import com.intellij.util.ui.JBUI
-import com.intellij.util.ui.UIUtil
+import java.awt.GridBagConstraints
+import java.awt.GridBagLayout
+import javax.swing.JButton
 import javax.swing.JLabel
-
+import javax.swing.JPanel
 
 class MyToolWindowFactory : ToolWindowFactory {
 
     override fun createToolWindowContent(project: com.intellij.openapi.project.Project, toolWindow: ToolWindow) {
         val vf = LightVirtualFile("answer.md", "")
         val preview = MarkdownJCEFHtmlPanel(project, vf)
-
         val ui = project.service<AiUiStateService>()
 
+        // Keep the latest payload for compose/send
+        var composePayload: EmailPayload? = null
+
+        // ---------- Answer view ----------
         val explanationLabel = JLabel("Not satisfied with Athena's answer?").apply {
             foreground = UIUtil.getContextHelpForeground()
             border = JBUI.Borders.emptyLeft(8)
-            font = JBUI.Fonts.label(11F)  // Slightly smaller
+            font = JBUI.Fonts.label(11F)
         }
 
-        val sendEmailBtn = JButton("Escalate")
+        val escalateBtn = JButton("Escalate")
 
-        val buttonBar = JPanel(FlowLayout(FlowLayout.RIGHT)).apply {
-            border = JBUI.Borders.empty(8)   // padding, optional
-            isOpaque = false                 // optional
+        val answerButtonBar = JPanel(FlowLayout(FlowLayout.RIGHT)).apply {
+            border = JBUI.Borders.empty(8)
+            isOpaque = false
             add(explanationLabel)
-            add(sendEmailBtn)                // button keeps preferred size (small)
+            add(escalateBtn)
         }
 
-        val panel = JPanel(BorderLayout()).apply {
+        val answerPanel = JPanel(BorderLayout()).apply {
             add(preview.component, BorderLayout.CENTER)
-            add(buttonBar, BorderLayout.SOUTH)  // ✅ below preview
+            add(answerButtonBar, BorderLayout.SOUTH)
+        }
+
+        // ---------- Compose view (user edits ONLY the question) ----------
+        val toField = JBTextField()
+        val subjectField = JBTextField()
+        val questionArea = JBTextArea().apply {
+            lineWrap = true
+            wrapStyleWord = true
+        }
+//        val explanationLabel2 = JLabel("Selected code and file path\n will be sent along with your message").apply {
+//            foreground = UIUtil.getContextHelpForeground()
+//            border = JBUI.Borders.emptyLeft(8)
+//            font = JBUI.Fonts.label(11F)
+//        }
+        val backBtn = JButton("Back")
+        val sendBtn = JButton("Send a message to editor")
+
+        val topForm = JPanel(GridBagLayout()).apply {
+            border = JBUI.Borders.empty(8)
+            val c = GridBagConstraints().apply {
+                gridx = 0; gridy = 0
+                anchor = GridBagConstraints.WEST
+                insets = JBUI.insets(0, 0, 6, 8)
+            }
+
+            add(JLabel("To:"), c)
+
+            c.gridx = 1
+            c.weightx = 1.0
+            c.fill = GridBagConstraints.HORIZONTAL
+            add(toField, c)
+
+            c.gridx = 0
+            c.gridy = 1
+            c.weightx = 0.0
+            c.fill = GridBagConstraints.NONE
+            c.insets = JBUI.insets(0, 0, 0, 8)
+            add(JLabel("Subject:"), c)
+
+            c.gridx = 1
+            c.weightx = 1.0
+            c.fill = GridBagConstraints.HORIZONTAL
+            c.insets = JBUI.insets(0, 0, 0, 0)
+            add(subjectField, c)
+        }
+
+        val questionPanel = JPanel(BorderLayout()).apply {
+            border = JBUI.Borders.empty(0, 8, 8, 8)
+            add(JLabel("Your message to code editor:"), BorderLayout.NORTH)
+            add(JBScrollPane(questionArea), BorderLayout.CENTER)
+        }
+
+        val composeButtons = JPanel(FlowLayout(FlowLayout.RIGHT)).apply {
+            border = JBUI.Borders.empty(8)
+            isOpaque = false
+            //add(explanationLabel2)
+            add(backBtn)
+            add(sendBtn)
+        }
+
+        val composePanel = JPanel(BorderLayout()).apply {
+            add(topForm, BorderLayout.NORTH)
+            add(questionPanel, BorderLayout.CENTER)
+            add(composeButtons, BorderLayout.SOUTH)
+        }
+
+        // ---------- Cards container ----------
+        val cards = JPanel(CardLayout()).apply {
+            add(answerPanel, "answer")
+            add(composePanel, "compose")
         }
 
         val content = ContentFactory.getInstance()
-            .createContent(panel, "Answer", false)
+            .createContent(cards, "Answer", false)
 
         toolWindow.contentManager.addContent(content)
         Disposer.register(content, preview)
 
+        val layout = cards.layout as CardLayout
+
+        // Always render AI answer into preview (toolwindow preview is NOT used as email preview)
         val listener: (String) -> Unit = { markdown ->
             val html = MarkdownUtil.generateMarkdownHtml(vf, markdown, project)
             ApplicationManager.getApplication().invokeLater {
                 preview.setHtml(html, 0)
             }
         }
-
         ui.addListener(listener)
         Disposer.register(content) { ui.removeListener(listener) }
 
-        sendEmailBtn.addActionListener {
-            // Get email; if missing, ask once and store
-
+        // ---------- Actions ----------
+        escalateBtn.addActionListener {
             val payload = ui.getLastEmailPayload()
+            if (payload == null) {
+                Messages.showInfoMessage(project, "Nothing to send yet (run Ask OpenAI first).", "Escalate")
+                return@addActionListener
+            }
+
+            composePayload = payload
+
+            // Prefill To/Subject
+            val toPrefill = payload.email?.takeIf { it.isNotBlank() } ?: ""
+            val repoName = java.io.File(project.basePath ?: project.name).name
+            val subjectPrefill = "[ISSUE] $repoName"
+
+            toField.text = toPrefill
+            subjectField.text = subjectPrefill
+
+            // User controls ONLY the question text
+            questionArea.text = payload.question
+
+            // Switch to compose view, but keep preview showing AI answer
+            layout.show(cards, "compose")
+        }
+
+        backBtn.addActionListener {
+            layout.show(cards, "answer")
+            // Preview already tracks AI answer via listener, but force refresh just in case
+            val answerMd = ui.getLastAnswer()
+            val html = MarkdownUtil.generateMarkdownHtml(vf, answerMd, project)
+            ApplicationManager.getApplication().invokeLater {
+                preview.setHtml(html, 0)
+            }
+        }
+
+        sendBtn.addActionListener {
+            val payload = composePayload
             if (payload == null) {
                 Messages.showInfoMessage(project, "Nothing to send yet (run Ask OpenAI first).", "Send Email")
                 return@addActionListener
             }
-            var to = payload.email
-            if (to.isNullOrBlank()) {
-                to = Messages.showInputDialog(
-                    project,
-                    "Enter recipient email:",
-                    "Send Email",
-                    Messages.getQuestionIcon()
-                )?.trim()
 
-                if (to.isNullOrBlank()) return@addActionListener
+            val toValue = toField.text.trim()
+            val subjectValue = subjectField.text.trim()
+            val questionText = questionArea.text.trim()
 
+            if (toValue.isBlank()) {
+                Messages.showInfoMessage(project, "Recipient email is empty.", "Send Email")
+                return@addActionListener
             }
-            val subject = "[ISSUE]: ${payload.filePath ?: "unknown file"}"
-            val body = buildString {
-                appendLine("Dear ${payload.name}")
-                appendLine()
-                appendLine("This is an automatically generated message.")
-                appendLine()
-                appendLine("Question:")
-                appendLine(payload.question)
-                appendLine()
-                appendLine("File path:")
-                appendLine(payload.filePath ?: "(unknown)")
-                appendLine()
-                appendLine("Selected snippet:")
-                appendLine("```")
-                appendLine(payload.selectedSnippet ?: "(no selection)")
-                appendLine("```")
+            if (subjectValue.isBlank()) {
+                Messages.showInfoMessage(project, "Subject is empty.", "Send Email")
+                return@addActionListener
             }
 
-            BrowserUtil.browse(buildMailto(to, subject, body))
+            // Build fixed-format markdown (user only changes questionText)
+            val md = buildEmailMarkdown(payload, questionText)
+
+            // Convert markdown -> HTML and wrap in email-safe template
+            val inner = MarkdownUtil.generateMarkdownHtml(vf, md, project)
+            val emailHtml = wrapEmailHtml(styleCodeBlocks(inner), title = subjectValue)
+            val textFallback = md
+
+            // Send off-EDT
+            ApplicationManager.getApplication().executeOnPooledThread {
+                try {
+                    val cfg = smtpConfigFromEnv()
+                    project.service<SmtpEmailService>()
+                        .sendHtml(cfg, toValue, subjectValue, emailHtml, textFallback)
+
+                    ApplicationManager.getApplication().invokeLater {
+                        Messages.showInfoMessage(project, "Email sent successfully.", "Send Email")
+                        layout.show(cards, "answer")
+                    }
+                } catch (t: Throwable) {
+                    ApplicationManager.getApplication().invokeLater {
+                        Messages.showErrorDialog(project, "Failed to send email: ${t.message}", "Send Email")
+                    }
+                }
+            }
         }
     }
-    private fun encMailto(s: String): String =
-        java.net.URLEncoder.encode(s, java.nio.charset.StandardCharsets.UTF_8)
-            .replace("+", "%20")
 
-    private fun buildMailto(to: String, subject: String, body: String): String {
-        val mailto = "mailto:$to?subject=${encMailto(subject)}&body=${encMailto(body)}"
-        return mailto
+    // Fixed email layout: user only edits "Question"
+    private fun buildEmailMarkdown(payload: EmailPayload, questionText: String): String {
+        val name = payload.name?.takeIf { it.isNotBlank() } ?: "there"
+        val q = if (questionText.isBlank()) payload.question else questionText
+
+        return buildString {
+            appendLine("Dear $name,")
+            appendLine()
+            appendLine("This is an automatically generated escalation message by Athena de-escalator.")
+            appendLine()
+
+            appendLine("## Question")
+            appendLine(q)
+            appendLine()
+
+            appendLine("## File")
+            appendLine(payload.filePath ?: "(unknown)")
+            appendLine()
+
+            appendLine("## Selected snippet")
+            appendLine("```")
+            appendLine(payload.selectedSnippet ?: "(no selection)")
+            appendLine("```")
+        }
     }
+
+    // ---- Email HTML helpers ----
+
+    private fun styleCodeBlocks(html: String): String {
+        var h = html
+
+        h = h.replace(Regex("<pre(\\s[^>]*)?>")) { m ->
+            val attrs = m.groupValues.getOrNull(1).orEmpty()
+            """<pre$attrs style="background:#0b1220;color:#e6edf3;padding:12px;border-radius:10px;overflow:auto;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,'Liberation Mono','Courier New',monospace;font-size:12px;line-height:1.45;">"""
+        }
+
+        h = h.replace(Regex("<code(\\s[^>]*)?>")) { m ->
+            val attrs = m.groupValues.getOrNull(1).orEmpty()
+            """<code$attrs style="font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,'Liberation Mono','Courier New',monospace;">"""
+        }
+
+        return h
+    }
+
+    private fun wrapEmailHtml(contentHtml: String, title: String): String {
+        return """
+<!doctype html>
+<html>
+  <body style="margin:0;padding:0;background:#f6f8fa;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f6f8fa;padding:24px 0;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="640" cellspacing="0" cellpadding="0" style="width:640px;max-width:640px;background:#ffffff;border:1px solid #e5e7eb;border-radius:14px;">
+            <tr>
+              <td style="padding:18px 20px;border-bottom:1px solid #e5e7eb;">
+                <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:16px;font-weight:600;color:#111827;">
+                  ${escapeHtml(title)}
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:18px 20px;">
+                <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:1.55;color:#111827;">
+                  $contentHtml
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:14px 20px;border-top:1px solid #e5e7eb;">
+                <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:12px;color:#6b7280;">
+                  Sent via Athena escalation
+                </div>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>
+""".trimIndent()
+    }
+
+    private fun escapeHtml(s: String): String =
+        s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 }
