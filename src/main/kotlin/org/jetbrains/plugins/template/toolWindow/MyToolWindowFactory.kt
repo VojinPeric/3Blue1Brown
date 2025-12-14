@@ -44,14 +44,14 @@ class MyToolWindowFactory : ToolWindowFactory {
         var composePayload: EmailPayload? = null
 
         // ---------- Answer view ----------
-        val explanationLabel = JLabel("Not satisfied with Athena's answer?").apply {
+        val explanationLabel = JLabel("Not satisfied with Athena's answer? Escalate further:").apply {
             foreground = UIUtil.getContextHelpForeground()
             border = JBUI.Borders.emptyLeft(8)
             font = JBUI.Fonts.label(11F)
         }
 
-        val sendIssueButton = JButton("Escalate Issue")
-        val sendEmailBtn = JButton("Escalate Email")
+        val sendIssueButton = JButton("Issue")
+        val sendEmailBtn = JButton("Email")
 
         val answerButtonBar = JPanel(FlowLayout(FlowLayout.RIGHT)).apply {
             border = JBUI.Borders.empty(8)
@@ -372,10 +372,11 @@ class MyToolWindowFactory : ToolWindowFactory {
         val response = client.send(request, HttpResponse.BodyHandlers.ofString())
 
         if (response.statusCode() !in 200..299) {
-            Messages.showErrorDialog(project, "No remote found", "Send Issue")
+            Messages.showErrorDialog(project, "Issue failed (Not Allowed)", "Send Issue")
+            return
         }
 
-        Messages.showInfoMessage(project, "Issue created: ${response.body()}", "Send Issue")
+        Messages.showInfoMessage(project, "Issue created", "Send Issue")
     }
 
     fun escapeJson(str: String) = str.replace("\"", "\\\"").replace("\n", "\\n")
