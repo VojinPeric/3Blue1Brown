@@ -73,7 +73,7 @@ fun smtpConfigFromEnv(): SmtpConfig {
     val port = env("SMTP_PORT").toIntOrNull() ?: 587
     val user = env("SMTP_USER")
     val pass = env("SMTP_PASS")
-    val from = System.getenv("SMTP_FROM")?.trim()?.takeIf { it.isNotBlank() } ?: user
+    val from = env("SMTP_FROM")?.trim()?.takeIf { it.isNotBlank() } ?: user
 
     val ssl = (System.getenv("SMTP_SSL") ?: (port == 465).toString()).toBoolean()
     val startTls = (System.getenv("SMTP_STARTTLS") ?: (!ssl).toString()).toBoolean()

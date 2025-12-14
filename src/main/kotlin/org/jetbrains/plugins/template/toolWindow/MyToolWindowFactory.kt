@@ -34,7 +34,6 @@ import javax.swing.JPanel
 
 
 class MyToolWindowFactory : ToolWindowFactory {
-
     override fun createToolWindowContent(project: com.intellij.openapi.project.Project, toolWindow: ToolWindow) {
         val vf = LightVirtualFile("answer.md", "")
         val preview = MarkdownJCEFHtmlPanel(project, vf)
@@ -69,6 +68,7 @@ class MyToolWindowFactory : ToolWindowFactory {
         // ---------- Compose view (user edits ONLY the question) ----------
         val toField = JBTextField()
         val subjectField = JBTextField()
+        val fromField = JBTextField()
         val questionArea = JBTextArea().apply {
             lineWrap = true
             wrapStyleWord = true
@@ -83,32 +83,51 @@ class MyToolWindowFactory : ToolWindowFactory {
 
         val topForm = JPanel(GridBagLayout()).apply {
             border = JBUI.Borders.empty(8)
+
             val c = GridBagConstraints().apply {
-                gridx = 0; gridy = 0
                 anchor = GridBagConstraints.WEST
+                fill = GridBagConstraints.NONE
+                weightx = 0.0
                 insets = JBUI.insets(0, 0, 6, 8)
             }
 
+            // Row 0: To
+            c.gridx = 0; c.gridy = 0
             add(JLabel("To:"), c)
 
             c.gridx = 1
             c.weightx = 1.0
             c.fill = GridBagConstraints.HORIZONTAL
+            c.insets = JBUI.insets(0, 0, 6, 0)
             add(toField, c)
 
-            c.gridx = 0
-            c.gridy = 1
+            // Row 1: Subject
+            c.gridx = 0; c.gridy = 1
             c.weightx = 0.0
             c.fill = GridBagConstraints.NONE
-            c.insets = JBUI.insets(0, 0, 0, 8)
+            c.insets = JBUI.insets(0, 0, 6, 8)
             add(JLabel("Subject:"), c)
 
             c.gridx = 1
             c.weightx = 1.0
             c.fill = GridBagConstraints.HORIZONTAL
-            c.insets = JBUI.insets(0, 0, 0, 0)
+            c.insets = JBUI.insets(0, 0, 6, 0)
             add(subjectField, c)
+
+            // Row 2: From
+            c.gridx = 0; c.gridy = 2
+            c.weightx = 0.0
+            c.fill = GridBagConstraints.NONE
+            c.insets = JBUI.insets(0, 0, 0, 8)
+            add(JLabel("From:"), c)
+
+            c.gridx = 1
+            c.weightx = 1.0
+            c.fill = GridBagConstraints.HORIZONTAL
+            c.insets = JBUI.insets(0, 0, 0, 0)
+            add(fromField, c)
         }
+
 
         val questionPanel = JPanel(BorderLayout()).apply {
             border = JBUI.Borders.empty(0, 8, 8, 8)
@@ -227,6 +246,7 @@ class MyToolWindowFactory : ToolWindowFactory {
             val toValue = toField.text.trim()
             val subjectValue = subjectField.text.trim()
             val questionText = questionArea.text.trim()
+            val fromValue = fromField.text.trim()
 
             if (toValue.isBlank()) {
                 Messages.showInfoMessage(project, "Recipient email is empty.", "Send Email")
@@ -236,9 +256,13 @@ class MyToolWindowFactory : ToolWindowFactory {
                 Messages.showInfoMessage(project, "Subject is empty.", "Send Email")
                 return@addActionListener
             }
+            if (fromValue.isBlank()) {
+                Messages.showInfoMessage(project, "Sender email is empty.", "Send Email")
+                return@addActionListener
+            }
 
             // Build fixed-format markdown (user only changes questionText)
-            val md = buildEmailMarkdown(payload, questionText)
+            val md = buildEmailMarkdown(payload, questionText, fromValue)
 
             // Convert markdown -> HTML and wrap in email-safe template
             val inner = MarkdownUtil.generateMarkdownHtml(vf, md, project)
@@ -265,16 +289,16 @@ class MyToolWindowFactory : ToolWindowFactory {
         }
     }
 
-    // Fixed email layout: user only edits "Question"
-    private fun buildEmailMarkdown(payload: EmailPayload, questionText: String): String {
+    private fun buildEmailMarkdown(payload: EmailPayload, questionText: String, fromValue: String): String {
         val name = payload.name?.takeIf { it.isNotBlank() } ?: "there"
+        //val from = System.getenv("SMTP_PASS")?.trim()?.takeIf { it.isNotBlank() } ?: "user"
         val q = if (questionText.isBlank()) payload.question else questionText
 
         return buildString {
             appendLine("Dear $name,")
             appendLine()
-            appendLine("This is an automatically generated escalation message by Athena de-escalator.")
-            appendLine()
+            appendLine("This is an automatically generated escalation message from Athena regarding a question from developer $fromValue about the code in this repository.")
+            appendLine("")
 
             appendLine("## Question")
             appendLine(q)
@@ -282,6 +306,7 @@ class MyToolWindowFactory : ToolWindowFactory {
 
             appendLine("## File")
             appendLine(payload.filePath ?: "(unknown)")
+            appendLine("ln${payload.startLine}-${payload.endLine}")
             appendLine()
 
             appendLine("## Selected snippet")
