@@ -8,7 +8,10 @@ data class EmailPayload(
     val filePath: String?,
     val selectedSnippet: String?,
     val name: String?,
-    val email: String?
+    val email: String?,
+    val originPath: String?,
+    val startLine: Int,
+    val endLine: Int,
 )
 
 data class EmailDraft(

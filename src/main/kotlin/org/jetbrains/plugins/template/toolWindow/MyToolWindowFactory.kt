@@ -22,11 +22,16 @@ import org.jetbrains.plugins.template.services.smtpConfigFromEnv
 import java.awt.BorderLayout
 import java.awt.CardLayout
 import java.awt.FlowLayout
+import java.net.URI
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
 import java.awt.GridBagConstraints
 import java.awt.GridBagLayout
 import javax.swing.JButton
 import javax.swing.JLabel
 import javax.swing.JPanel
+
 
 class MyToolWindowFactory : ToolWindowFactory {
 
@@ -45,13 +50,15 @@ class MyToolWindowFactory : ToolWindowFactory {
             font = JBUI.Fonts.label(11F)
         }
 
-        val escalateBtn = JButton("Escalate")
+        val sendIssueButton = JButton("Escalate Issue")
+        val sendEmailBtn = JButton("Escalate Email")
 
         val answerButtonBar = JPanel(FlowLayout(FlowLayout.RIGHT)).apply {
             border = JBUI.Borders.empty(8)
             isOpaque = false
             add(explanationLabel)
-            add(escalateBtn)
+            add(sendIssueButton)
+            add(sendEmailBtn)                // button keeps preferred size (small)
         }
 
         val answerPanel = JPanel(BorderLayout()).apply {
@@ -148,7 +155,35 @@ class MyToolWindowFactory : ToolWindowFactory {
         Disposer.register(content) { ui.removeListener(listener) }
 
         // ---------- Actions ----------
-        escalateBtn.addActionListener {
+        sendIssueButton.addActionListener {
+            val payload = ui.getLastEmailPayload()
+            if (payload == null) {
+                Messages.showInfoMessage(project, "Nothing to send yet (run Ask OpenAI first).", "Send Issue")
+                return@addActionListener
+            }
+            if (payload.originPath == null) {
+                Messages.showInfoMessage(project, "No remote found", "Send Issue")
+                return@addActionListener
+            }
+            val body = """
+                ## Auto-Generated Code Assistance Issue
+                
+                **This issue was automatically created** by the Athena plugin when a developer had a question about code in this repository.
+                
+                ### Context
+                - **File**: `${payload.filePath ?: "unknown file"}` (lines `${payload.startLine}-${payload.endLine}`)
+                - **Question**: `${payload.question}`
+                - **Selected Snippet**:
+                ```
+                ${payload.selectedSnippet}
+                ```
+                
+                **Developer Action Required**: Review above and provide feedback.
+            """.trimIndent()
+            createGithubIssue(project, "[ISSUE]: ${payload.filePath ?: "unknown file"}", body, payload.originPath)
+        }
+
+        sendEmailBtn.addActionListener {
             val payload = ui.getLastEmailPayload()
             if (payload == null) {
                 Messages.showInfoMessage(project, "Nothing to send yet (run Ask OpenAI first).", "Escalate")
@@ -315,4 +350,33 @@ class MyToolWindowFactory : ToolWindowFactory {
 
     private fun escapeHtml(s: String): String =
         s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+    private fun createGithubIssue(project: com.intellij.openapi.project.Project, title: String, body: String, path: String) {
+        val json = """
+            {
+              "title": "${escapeJson(title)}",
+              "body": "${escapeJson(body)}",
+              "labels": ["question"]
+            }
+        """.trimIndent()
+
+        val request = HttpRequest.newBuilder()
+            .uri(URI("https://api.github.com/repos/$path/issues"))
+            .header("Authorization", "Bearer ${System.getenv("GITHUB_TOKEN")}")
+            .header("Accept", "application/vnd.github+json")
+            .header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(json))
+            .build()
+
+        val client = HttpClient.newHttpClient()
+        val response = client.send(request, HttpResponse.BodyHandlers.ofString())
+
+        if (response.statusCode() !in 200..299) {
+            Messages.showErrorDialog(project, "No remote found", "Send Issue")
+        }
+
+        Messages.showInfoMessage(project, "Issue created: ${response.body()}", "Send Issue")
+    }
+
+    fun escapeJson(str: String) = str.replace("\"", "\\\"").replace("\n", "\\n")
 }

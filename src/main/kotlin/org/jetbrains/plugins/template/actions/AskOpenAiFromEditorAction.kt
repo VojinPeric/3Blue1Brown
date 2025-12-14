@@ -68,7 +68,7 @@ class AskOpenAiFromEditorAction : AnAction("Athena Deescalate") {
         val startLine = (document.getLineNumber(startOffset) + 1)
         val endLine = (document.getLineNumber(endOffset - 1) + 1)
         var authorInfo: Sequence<String>  = sequenceOf()
-
+        var repositoryPath: String? = null
 
         val fileText = runReadAction { psiFile.text }
         val filePath = runReadAction {
@@ -103,6 +103,15 @@ class AskOpenAiFromEditorAction : AnAction("Athena Deescalate") {
                     val repository = GitRepositoryManager.getInstance(project).getRepositoryForFileQuick(virtualFile)
                     if (repository != null) {
                         authorInfo = getGitAuthorForLines(project, repository, virtualFile, startLine, endLine)
+                        val origin = repository.remotes.firstOrNull { it.name == "origin" }
+                            ?: repository.remotes.firstOrNull()
+
+                        val remoteUrl = origin?.firstUrl
+                        if (remoteUrl != null)
+                            repositoryPath = extractGithubRepoPath(remoteUrl)
+                        else
+                            repositoryPath = null
+
                         println("Git author of selected snippet: $authorInfo")
                     }
                 } catch (ex: Exception) {
@@ -117,7 +126,10 @@ class AskOpenAiFromEditorAction : AnAction("Athena Deescalate") {
                         filePath = filePath,
                         selectedSnippet = selectedSnippet,
                         name = authorInfo.elementAtOrNull(0),
-                        email = authorInfo.elementAtOrNull(1)
+                        email = authorInfo.elementAtOrNull(1),
+                        originPath = repositoryPath,
+                        startLine = startLine,
+                        endLine = endLine,
                     )
                 )
 
@@ -178,5 +190,19 @@ class AskOpenAiFromEditorAction : AnAction("Athena Deescalate") {
             }
         }
         throw IllegalArgumentException("Unkown author")
+    }
+
+    fun extractGithubRepoPath(url: String): String? {
+        return when {
+            url.startsWith("git@github.com:") ->
+                url.removePrefix("git@github.com:")
+                    .removeSuffix(".git")
+
+            url.startsWith("https://github.com/") ->
+                url.removePrefix("https://github.com/")
+                    .removeSuffix(".git")
+
+            else -> null
+        }
     }
 }
